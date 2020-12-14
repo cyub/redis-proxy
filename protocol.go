@@ -65,6 +65,55 @@ func (resp *Resp) String() string {
 	}
 }
 
+func (resp *Resp) ToRESP() ([]byte, error) {
+	identifyChar := make(map[int]byte, 0)
+	for identChar, respType := range identify {
+		identifyChar[respType] = identChar
+	}
+	var byteBuf bytes.Buffer
+	byteBuf.WriteByte(identifyChar[resp.Type])
+	switch resp.Type {
+	case RespTypeSimpleString:
+		byteBuf.Write(resp.State)
+	case RespTypeError:
+		byteBuf.Write(resp.Error.errType)
+		byteBuf.Write([]byte(" "))
+		byteBuf.Write(resp.Error.errMessage)
+	case RespTypeInteger:
+		byteBuf.Write(resp.Integer)
+	case RespTypeBulkString:
+		if resp.Bulk == nil {
+			byteBuf.Write(NumberToBytes(-1))
+		} else {
+			byteBuf.Write(NumberToBytes(len(resp.Bulk)))
+			byteBuf.Write(byteCRLF)
+			byteBuf.Write(resp.Bulk)
+		}
+	case RespTypeArray:
+		if resp.Array == nil {
+			byteBuf.Write(NumberToBytes(-1))
+		} else if len(resp.Array) == 0 {
+			byteBuf.Write(NumberToBytes(0))
+		} else {
+			byteBuf.Write(NumberToBytes(len(resp.Array)))
+			byteBuf.Write(byteCRLF)
+			for index, subResp := range resp.Array {
+				subRESP, err := subResp.ToRESP()
+				if err != nil {
+					return nil, err
+				}
+				if index == len(resp.Array)-1 { // 最后一次迭代会多出CTLF
+					byteBuf.Write(subRESP[0 : len(subRESP)-2])
+				} else {
+					byteBuf.Write(subRESP)
+				}
+			}
+		}
+	}
+	byteBuf.Write(byteCRLF)
+	return byteBuf.Bytes(), nil
+}
+
 type RESPerror struct {
 	errType    []byte
 	errMessage []byte
@@ -146,55 +195,6 @@ func toBulkString(br *bufio.Reader, data []byte) (*Resp, error) {
 	}
 	resp.Bulk = buf[:len(buf)-2]
 	return resp, nil
-}
-
-func (resp *Resp) ToRESP() ([]byte, error) {
-	identifyChar := make(map[int]byte, 0)
-	for identChar, respType := range identify {
-		identifyChar[respType] = identChar
-	}
-	var byteBuf bytes.Buffer
-	byteBuf.WriteByte(identifyChar[resp.Type])
-	switch resp.Type {
-	case RespTypeSimpleString:
-		byteBuf.Write(resp.State)
-	case RespTypeError:
-		byteBuf.Write(resp.Error.errType)
-		byteBuf.Write([]byte(" "))
-		byteBuf.Write(resp.Error.errMessage)
-	case RespTypeInteger:
-		byteBuf.Write(resp.Integer)
-	case RespTypeBulkString:
-		if resp.Bulk == nil {
-			byteBuf.Write(NumberToBytes(-1))
-		} else {
-			byteBuf.Write(NumberToBytes(len(resp.Bulk)))
-			byteBuf.Write(byteCRLF)
-			byteBuf.Write(resp.Bulk)
-		}
-	case RespTypeArray:
-		if resp.Array == nil {
-			byteBuf.Write(NumberToBytes(-1))
-		} else if len(resp.Array) == 0 {
-			byteBuf.Write(NumberToBytes(0))
-		} else {
-			byteBuf.Write(NumberToBytes(len(resp.Array)))
-			byteBuf.Write(byteCRLF)
-			for index, subResp := range resp.Array {
-				subRESP, err := subResp.ToRESP()
-				if err != nil {
-					return nil, err
-				}
-				if index == len(resp.Array)-1 { // 最后一次迭代会多出CTLF
-					byteBuf.Write(subRESP[0 : len(subRESP)-2])
-				} else {
-					byteBuf.Write(subRESP)
-				}
-			}
-		}
-	}
-	byteBuf.Write(byteCRLF)
-	return byteBuf.Bytes(), nil
 }
 
 func toArray(br *bufio.Reader, data []byte) (*Resp, error) {

@@ -41,7 +41,6 @@ func (c *Conn) Connect() error {
 	}
 
 	c.conn = conn.(*net.TCPConn)
-	c.conn.SetNoDelay(true)
 	c.r = bufio.NewReader(c.conn)
 	c.w = bufio.NewWriter(c.conn)
 	if err = c.WriteCommand(PING()); err != nil {

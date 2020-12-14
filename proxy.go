@@ -45,7 +45,7 @@ func New(config *Config) *Proxy {
 	return &Proxy{
 		config:          *config,
 		transactionChan: make(chan *transaction),
-		clients:         make(map[int64]*Client, 0),
+		clients:         make(map[int64]*Client),
 		clusters:        make(map[string]*Conn),
 	}
 }
@@ -159,8 +159,7 @@ func (p *Proxy) WriteCommand(cmd *Command) (*Resp, error) {
 }
 
 func (p *Proxy) acquireSvcConn(cmd *Command) (*Conn, error) {
-	var index int
-	var total int
+	var index, total int
 	if len(cmd.Params) > 0 {
 		data := md5.Sum(cmd.Params[0])
 		for _, b := range data {

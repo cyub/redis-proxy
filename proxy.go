@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -38,7 +39,8 @@ type Proxy struct {
 	transactionChan  chan *transaction
 	clusterLock      sync.RWMutex
 	clientLock       sync.RWMutex
-	wg               waitGroup
+	wg               *waitGroup
+	ht               HashTag
 }
 
 func New(config *Config) *Proxy {
@@ -47,11 +49,13 @@ func New(config *Config) *Proxy {
 		transactionChan: make(chan *transaction),
 		clients:         make(map[int64]*Client),
 		clusters:        make(map[string]*Conn),
+		wg:              new(waitGroup),
+		ht:              NewHashTag('{', '}'),
 	}
 }
 
 func (p *Proxy) Run() error {
-	if len(p.config.ClusterAddrs) <= 0 {
+	if len(p.config.ClusterAddrs) == 0 {
 		return errors.New("invalid cluster addrs")
 	}
 
@@ -159,9 +163,19 @@ func (p *Proxy) WriteCommand(cmd *Command) (*Resp, error) {
 }
 
 func (p *Proxy) acquireSvcConn(cmd *Command) (*Conn, error) {
-	var index, total int
+	var (
+		total int
+		index int
+	)
+
 	if len(cmd.Params) > 0 {
-		data := md5.Sum(cmd.Params[0])
+		shardKey := cmd.Params[0]
+		leftPos := bytes.IndexByte(shardKey, p.ht.left)
+		rightPos := bytes.IndexByte(shardKey, p.ht.right)
+		if leftPos >= 0 && rightPos > leftPos+1 {
+			shardKey = shardKey[leftPos+1 : rightPos]
+		}
+		data := md5.Sum(shardKey)
 		for _, b := range data {
 			total = total + int(b)
 		}
@@ -192,6 +206,17 @@ type transaction struct {
 	resp     *Resp
 	doneChan chan *transaction
 	Error    error
+}
+
+// HashTag struct
+type HashTag struct {
+	left  byte
+	right byte
+}
+
+// NewHashTag return hashtag
+func NewHashTag(left, right byte) HashTag {
+	return HashTag{left, right}
 }
 
 type waitGroup struct {
